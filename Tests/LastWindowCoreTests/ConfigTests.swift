@@ -41,4 +41,31 @@ struct WindowCountTests {
         let infos = [info(pid: 1, id: 10), info(pid: 1, id: 11), info(pid: 2, id: 20)]
         #expect(WindowCount.liveWindowIDs(in: infos, pid: 1) == [10, 11])
     }
+
+    func stillOpen(known: Set<UInt32>, live: Set<UInt32>, listedByAX: Set<UInt32> = [],
+                   spaces: [UInt32: Set<UInt64>] = [:]) -> Set<UInt32> {
+        WindowCount.stillOpen(known: known, live: live, listedByAX: listedByAX, spaces: spaces, visibleSpaces: [6])
+    }
+
+    @Test func dropsDestroyedWindows() {
+        #expect(stillOpen(known: [1], live: []) == [])
+    }
+
+    @Test func keepsWindowsAccessibilityStillLists() {
+        // Hidden apps (⌘H) keep their windows in AX, with subrole AXDialog.
+        #expect(stillOpen(known: [1], live: [1], listedByAX: [1], spaces: [1: [6]]) == [1])
+    }
+
+    @Test func keepsWindowsOnSpacesNotShown() {
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [7]]) == [1])
+    }
+
+    @Test func dropsWindowsHiddenOnAShownSpace() {
+        // Word's start screen: ordered out, still on the current Space, not in AX.
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6]]) == [])
+    }
+
+    @Test func dropsWindowsOnNoSpace() {
+        #expect(stillOpen(known: [1], live: [1], spaces: [:]) == [])
+    }
 }

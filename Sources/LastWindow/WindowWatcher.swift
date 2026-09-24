@@ -9,6 +9,14 @@ private let log = Logger(subsystem: "com.adamstahl.LastWindow", category: "watch
 @_silgen_name("_AXUIElementGetWindow")
 private func _AXUIElementGetWindow(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
 
+// Private SkyLight Spaces APIs (used by yabai, AltTab): which Spaces a window is on, and which are shown.
+@_silgen_name("CGSMainConnectionID")
+private func CGSMainConnectionID() -> Int32
+@_silgen_name("CGSCopySpacesForWindows")
+private func CGSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Unmanaged<CFArray>?
+@_silgen_name("CGSCopyManagedDisplaySpaces")
+private func CGSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
+
 /// Watches every regular app via Accessibility and quits it once its last standard window closes.
 @MainActor
 final class WindowWatcher: NSObject {
@@ -20,8 +28,8 @@ final class WindowWatcher: NSObject {
         let element: AXUIElement
         let observer: AXObserver
         var hadStandardWindow = false
-        /// Standard windows seen via AX. AX only lists windows on the current Space, so a
-        /// known ID still present in the window server means a window lives elsewhere.
+        /// Standard windows seen via AX. AX only lists windows on the current Space, so these
+        /// let us notice windows that still live on another Space.
         var knownWindowIDs: Set<CGWindowID> = []
         var pendingCheck: Task<Void, Never>?
 
@@ -121,9 +129,16 @@ final class WindowWatcher: NSObject {
 
     private func check(_ entry: Watched) {
         guard !entry.app.isTerminated else { return }
-        let axCount = remember(windows(of: entry.element), in: entry)
+        let axWindows = windows(of: entry.element)
+        let axCount = remember(axWindows, in: entry)
         let infos = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        entry.knownWindowIDs.formIntersection(WindowCount.liveWindowIDs(in: infos, pid: entry.app.processIdentifier))
+        entry.knownWindowIDs = WindowCount.stillOpen(
+            known: entry.knownWindowIDs,
+            live: WindowCount.liveWindowIDs(in: infos, pid: entry.app.processIdentifier),
+            listedByAX: Set(axWindows.compactMap(windowID)),
+            spaces: spaces(for: entry.knownWindowIDs),
+            visibleSpaces: visibleSpaces()
+        )
 
         let decision = QuitPolicy.decide(
             enabled: isEnabled,
@@ -146,11 +161,29 @@ final class WindowWatcher: NSObject {
     private func remember(_ windows: [AXUIElement], in entry: Watched) -> Int {
         let standard = windows.filter(isStandardWindow)
         if !standard.isEmpty { entry.hadStandardWindow = true }
-        for window in standard {
-            var id: CGWindowID = 0
-            if _AXUIElementGetWindow(window, &id) == .success { entry.knownWindowIDs.insert(id) }
-        }
+        entry.knownWindowIDs.formUnion(standard.compactMap(windowID))
         return standard.count
+    }
+
+    private func windowID(_ window: AXUIElement) -> CGWindowID? {
+        var id: CGWindowID = 0
+        return _AXUIElementGetWindow(window, &id) == .success ? id : nil
+    }
+
+    private func spaces(for windowIDs: Set<CGWindowID>) -> [CGWindowID: Set<UInt64>] {
+        let cid = CGSMainConnectionID()
+        var result: [CGWindowID: Set<UInt64>] = [:]
+        for id in windowIDs {
+            let spaces = CGSCopySpacesForWindows(cid, 0x7, [NSNumber(value: id)] as CFArray)?.takeRetainedValue() as? [NSNumber] ?? []
+            result[id] = Set(spaces.map(\.uint64Value))
+        }
+        return result
+    }
+
+    /// The Space currently shown on each display.
+    private func visibleSpaces() -> Set<UInt64> {
+        let displays = CGSCopyManagedDisplaySpaces(CGSMainConnectionID())?.takeRetainedValue() as? [[String: Any]] ?? []
+        return Set(displays.compactMap { ($0["Current Space"] as? [String: Any])?["ManagedSpaceID"] as? UInt64 })
     }
 
     private func windows(of app: AXUIElement) -> [AXUIElement] {
