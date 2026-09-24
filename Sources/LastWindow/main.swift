@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Open Config…", #selector(openConfig)))
         menu.addItem(item("Reload Config", #selector(reloadConfig)))
         menu.addItem(.separator())
+        menu.addItem(item("Restart LastWindow", #selector(restart)))
         menu.addItem(NSMenuItem(title: "Quit LastWindow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
@@ -100,6 +101,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             log.info("Loaded config with \(config.excluded.count) exclusions")
         } catch {
             showError("Couldn't read \(Config.defaultURL.path)", error)
+        }
+    }
+
+    @objc private func restart() {
+        // `open` on a still-running app just activates it, so relaunch from a shell that outlives us.
+        let relaunch = Process()
+        relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relaunch.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        do {
+            try relaunch.run()
+            NSApp.terminate(nil)
+        } catch {
+            showError("Couldn't restart LastWindow", error)
         }
     }
 
