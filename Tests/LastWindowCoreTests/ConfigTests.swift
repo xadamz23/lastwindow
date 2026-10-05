@@ -43,8 +43,27 @@ struct WindowCountTests {
     }
 
     func stillOpen(known: Set<UInt32>, live: Set<UInt32>, listedByAX: Set<UInt32> = [],
-                   spaces: [UInt32: Set<UInt64>] = [:]) -> Set<UInt32> {
-        WindowCount.stillOpen(known: known, live: live, listedByAX: listedByAX, spaces: spaces, visibleSpaces: [6])
+                   spaces: [UInt32: Set<UInt64>] = [:], onAllSpaces: Set<UInt32> = []) -> Set<UInt32> {
+        WindowCount.stillOpen(known: known, live: live, listedByAX: listedByAX, spaces: spaces,
+                              visibleSpaces: [6], onAllSpaces: onAllSpaces)
+    }
+
+    @Test func findsWindowsOnMoreThanOneSpace() {
+        #expect(WindowCount.onMultipleSpaces([1: [6, 7, 8, 9], 2: [6], 3: []]) == [1])
+    }
+
+    @Test func keepsAllDesktopsWindowAccessibilityStopsListing() {
+        // Teams while the screen was locked: alive on every Space, but missing from AX.
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6, 7, 8, 9]], onAllSpaces: [1]) == [1])
+    }
+
+    @Test func keepsAllDesktopsWindowThatBrieflyReportsNoSpace() {
+        // Outlook just after unlock: seen on every Space, then momentarily on none.
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: []], onAllSpaces: [1]) == [1])
+    }
+
+    @Test func dropsDestroyedAllDesktopsWindow() {
+        #expect(stillOpen(known: [1], live: [], onAllSpaces: [1]) == [])
     }
 
     @Test func dropsDestroyedWindows() {

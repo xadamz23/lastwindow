@@ -31,6 +31,8 @@ final class WindowWatcher: NSObject {
         /// Standard windows seen via AX. AX only lists windows on the current Space, so these
         /// let us notice windows that still live on another Space.
         var knownWindowIDs: Set<CGWindowID> = []
+        /// Known windows ever seen on more than one Space (assigned to All Desktops).
+        var onAllSpaces: Set<CGWindowID> = []
         var pendingCheck: Task<Void, Never>?
 
         init(app: NSRunningApplication, element: AXUIElement, observer: AXObserver) {
@@ -132,13 +134,17 @@ final class WindowWatcher: NSObject {
         let axWindows = windows(of: entry.element)
         let axCount = remember(axWindows, in: entry)
         let infos = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let knownSpaces = spaces(for: entry.knownWindowIDs)
+        entry.onAllSpaces.formUnion(WindowCount.onMultipleSpaces(knownSpaces))
         entry.knownWindowIDs = WindowCount.stillOpen(
             known: entry.knownWindowIDs,
             live: WindowCount.liveWindowIDs(in: infos, pid: entry.app.processIdentifier),
             listedByAX: Set(axWindows.compactMap(windowID)),
-            spaces: spaces(for: entry.knownWindowIDs),
-            visibleSpaces: visibleSpaces()
+            spaces: knownSpaces,
+            visibleSpaces: visibleSpaces(),
+            onAllSpaces: entry.onAllSpaces
         )
+        entry.onAllSpaces.formIntersection(entry.knownWindowIDs)
 
         let decision = QuitPolicy.decide(
             enabled: isEnabled,
@@ -161,7 +167,9 @@ final class WindowWatcher: NSObject {
     private func remember(_ windows: [AXUIElement], in entry: Watched) -> Int {
         let standard = windows.filter(isStandardWindow)
         if !standard.isEmpty { entry.hadStandardWindow = true }
-        entry.knownWindowIDs.formUnion(standard.compactMap(windowID))
+        let ids = Set(standard.compactMap(windowID))
+        entry.knownWindowIDs.formUnion(ids)
+        entry.onAllSpaces.formUnion(WindowCount.onMultipleSpaces(spaces(for: ids)))
         return standard.count
     }
 
