@@ -142,7 +142,9 @@ final class WindowWatcher: NSObject {
             listedByAX: Set(axWindows.compactMap(windowID)),
             spaces: knownSpaces,
             visibleSpaces: visibleSpaces(),
-            onAllSpaces: entry.onAllSpaces
+            onAllSpaces: entry.onAllSpaces,
+            onscreen: WindowCount.onscreenWindowIDs(in: infos, pid: entry.app.processIdentifier),
+            screenLocked: isScreenLocked()
         )
         entry.onAllSpaces.formIntersection(entry.knownWindowIDs)
 
@@ -192,6 +194,11 @@ final class WindowWatcher: NSObject {
     private func visibleSpaces() -> Set<UInt64> {
         let displays = CGSCopyManagedDisplaySpaces(CGSMainConnectionID())?.takeRetainedValue() as? [[String: Any]] ?? []
         return Set(displays.compactMap { ($0["Current Space"] as? [String: Any])?["ManagedSpaceID"] as? UInt64 })
+    }
+
+    private func isScreenLocked() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        return session?["CGSSessionScreenIsLocked"] as? Bool ?? false
     }
 
     private func windows(of app: AXUIElement) -> [AXUIElement] {

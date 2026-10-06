@@ -42,19 +42,41 @@ struct WindowCountTests {
         #expect(WindowCount.liveWindowIDs(in: infos, pid: 1) == [10, 11])
     }
 
+    @Test func returnsOnscreenWindowIDsForPIDOnly() {
+        var shown = info(pid: 1, id: 10)
+        shown["kCGWindowIsOnscreen"] = true
+        var otherApp = info(pid: 2, id: 20)
+        otherApp["kCGWindowIsOnscreen"] = true
+        let infos = [shown, info(pid: 1, id: 11), otherApp]
+        #expect(WindowCount.onscreenWindowIDs(in: infos, pid: 1) == [10])
+    }
+
     func stillOpen(known: Set<UInt32>, live: Set<UInt32>, listedByAX: Set<UInt32> = [],
-                   spaces: [UInt32: Set<UInt64>] = [:], onAllSpaces: Set<UInt32> = []) -> Set<UInt32> {
+                   spaces: [UInt32: Set<UInt64>] = [:], onAllSpaces: Set<UInt32> = [],
+                   onscreen: Set<UInt32> = [], screenLocked: Bool = false) -> Set<UInt32> {
         WindowCount.stillOpen(known: known, live: live, listedByAX: listedByAX, spaces: spaces,
-                              visibleSpaces: [6], onAllSpaces: onAllSpaces)
+                              visibleSpaces: [6], onAllSpaces: onAllSpaces,
+                              onscreen: onscreen, screenLocked: screenLocked)
     }
 
     @Test func findsWindowsOnMoreThanOneSpace() {
         #expect(WindowCount.onMultipleSpaces([1: [6, 7, 8, 9], 2: [6], 3: []]) == [1])
     }
 
-    @Test func keepsAllDesktopsWindowAccessibilityStopsListing() {
+    @Test func keepsAllDesktopsWindowWhileScreenLocked() {
         // Teams while the screen was locked: alive on every Space, but missing from AX.
-        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6, 7, 8, 9]], onAllSpaces: [1]) == [1])
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6, 7, 8, 9]], onAllSpaces: [1],
+                          screenLocked: true) == [1])
+    }
+
+    @Test func dropsClosedAllDesktopsWindow() {
+        // Slack and Teams hide their window on close: alive on every Space, off screen, not in AX.
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6, 7, 8, 9]], onAllSpaces: [1]) == [])
+    }
+
+    @Test func keepsOnscreenAllDesktopsWindowAccessibilityMisses() {
+        #expect(stillOpen(known: [1], live: [1], spaces: [1: [6, 7, 8, 9]], onAllSpaces: [1],
+                          onscreen: [1]) == [1])
     }
 
     @Test func keepsAllDesktopsWindowThatBrieflyReportsNoSpace() {

@@ -53,7 +53,7 @@ LastWindow watches every regular app through the Accessibility API. When one of 
 - the app has shown at least one standard window since LastWindow began watching it, so apps that launch without a window are left alone
 - Accessibility reports no standard windows (minimized windows still count as open)
 - none of the app's previously seen windows still exist on another Space
-- none of the app's windows that were assigned to All Desktops still exist. Around screen lock and unlock, Accessibility can stop listing these windows, so they count as open for as long as they exist.
+- none of the app's windows that are assigned to All Desktops are still open. Slack and Teams only hide these windows when you close them, and around screen lock and unlock Accessibility can stop listing them, so they count as closed only when the screen is unlocked and the window is off screen.
 
 Accessibility only lists windows on the current Space. To catch windows on other Spaces, LastWindow remembers every window ID it has seen and asks the window server (via the private SkyLight APIs that yabai and AltTab also use) whether those windows are still alive and which Space they're on.
 
