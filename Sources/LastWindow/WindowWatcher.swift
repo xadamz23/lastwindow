@@ -51,6 +51,7 @@ final class WindowWatcher: NSObject {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(appLaunched(_:)), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         center.addObserver(self, selector: #selector(appTerminated(_:)), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        center.addObserver(self, selector: #selector(appActivated(_:)), name: NSWorkspace.didActivateApplicationNotification, object: nil)
         for app in NSWorkspace.shared.runningApplications {
             watch(app, attemptsLeft: 1)
         }
@@ -64,6 +65,12 @@ final class WindowWatcher: NSObject {
             try? await Task.sleep(for: .seconds(1))
             watch(app, attemptsLeft: 5)
         }
+    }
+
+    /// Catches apps whose launch-time watch gave up, e.g. ones slow to accept AX observers.
+    @objc private func appActivated(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        watch(app, attemptsLeft: 1)
     }
 
     @objc private func appTerminated(_ note: Notification) {
@@ -96,7 +103,7 @@ final class WindowWatcher: NSObject {
                     watch(app, attemptsLeft: attemptsLeft - 1)
                 }
             } else {
-                log.debug("Could not observe \(app.bundleIdentifier ?? "pid \(pid)"): \(result.rawValue)")
+                log.notice("Could not observe \(app.bundleIdentifier ?? "pid \(pid)"): \(result.rawValue)")
             }
             return
         }
